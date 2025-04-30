@@ -42,7 +42,7 @@ void display_clock(const char *event) {
 }
 
 void update_on_receive(Message msg) {
-    printf("[P%d] Reçu de P%d | Vecteur reçu : ", MON_ID, msg.sender_id);
+    printf("[P%d] Recu de P%d | Vecteur recu : ", MON_ID, msg.sender_id);
     print_vector(msg.vector);
     printf("\n");
 
@@ -77,7 +77,7 @@ void send_message(int port, int dest_id) {
     }
 
     if (try_count == 5) {
-        printf("[P%d] Connexion échouée au port %d (code %d)\n", MON_ID, port, WSAGetLastError());
+        printf("[P%d] Connexion echouee au port %d (code %d)\n", MON_ID, port, WSAGetLastError());
         closesocket(sock);
         return;
     }
@@ -90,13 +90,16 @@ void send_message(int port, int dest_id) {
         msg.vector[i] = vector_clock[i];
     }
 
-    printf("[P%d] Envoi à P%d | Horloge envoyée : ", MON_ID, dest_id);
+    printf("[P%d] Envoi a P%d | Horloge envoyee : ", MON_ID, dest_id);
     print_vector(msg.vector);
     printf("\n");
 
     send(sock, (char*)&msg, sizeof(msg), 0);
     closesocket(sock);
     vector_clock[MON_ID - 1]++;
+    printf("[P%d] Nouvelle horloge : ", MON_ID);
+    print_vector(vector_clock);
+    printf("\n");
 }
 
 DWORD WINAPI receive_thread(LPVOID lpParam) {
@@ -106,7 +109,7 @@ DWORD WINAPI receive_thread(LPVOID lpParam) {
 
     server_socket = socket(AF_INET, SOCK_STREAM, 0);
     if (server_socket == INVALID_SOCKET) {
-        printf("Erreur création socket serveur : %d\n", WSAGetLastError());
+        printf("Erreur creation socket serveur : %d\n", WSAGetLastError());
         return 1;
     }
 
@@ -149,24 +152,24 @@ int main() {
     Sleep(1000);
 
     vector_clock[MON_ID - 1]++;
-    display_clock("Événement local 1 : Affichage");
+    display_clock("Evenement local 1 : Affichage");
 
     vector_clock[MON_ID - 1]++;
     int x = 20; x += 5;
-    display_clock("Événement local 2 : Incrémentation");
+    display_clock("Evenement local 2 : Incrementation");
 
     vector_clock[MON_ID - 1]++;
     time_t t = time(NULL);
     printf("[P%d] Heure système : %s", MON_ID, ctime(&t));
-    display_clock("Événement local 3 : Heure système");
+    display_clock("Evenement local 3 : Heure systeme");
 
     vector_clock[MON_ID - 1]++;
     int y = x - 3;
-    display_clock("Événement local 4 : Soustraction");
+    display_clock("Evenement local 4 : Soustraction");
 
     vector_clock[MON_ID - 1]++;
     Sleep(1000);
-    display_clock("Événement local 5 : Pause 1s");
+    display_clock("Evenement local 5 : Pause 1s");
 
     send_message(PORT1, 1); Sleep(200);
     send_message(PORT2, 2); Sleep(200);
@@ -179,7 +182,7 @@ int main() {
     Sleep(200);
     WSACleanup();
 
-    printf("Appuyez sur Entrée pour quitter...\n");
+    printf("Appuyez sur Entree pour quitter...\n");
     getchar();
     return 0;
 }
