@@ -83,6 +83,7 @@ void send_message(int port, int dest_id) {
         return;
     }
 
+    vector_clock[MON_ID - 1]++; // Incrément propre case avant envoi
 
     Message msg;
     msg.sender_id = MON_ID;
@@ -96,10 +97,7 @@ void send_message(int port, int dest_id) {
 
     send(sock, (char*)&msg, sizeof(msg), 0);
     closesocket(sock);
-    vector_clock[MON_ID - 1]++; // Incrément propre case apres envoi
-    printf("[P%d] Nouvelle horloge : ", MON_ID);
-    print_vector(vector_clock);
-    printf("\n");
+   
 
 }
 
@@ -128,7 +126,7 @@ DWORD WINAPI receive_thread(LPVOID lpParam) {
         return 1;
     }
 
-    printf("[P%d] Serveur prêt sur le port %d\n", MON_ID, PORT2);
+    printf("[P%d] Serveur pret sur le port %d\n", MON_ID, PORT2);
 
     while (!stop) {
         SOCKET client_socket = accept(server_socket, (SOCKADDR*)&client_addr, &addr_len);
@@ -161,7 +159,7 @@ int main() {
 
     vector_clock[MON_ID - 1]++;
     time_t t = time(NULL);
-    printf("[P%d] Heure système : %s", MON_ID, ctime(&t));
+    printf("[P%d] Heure systeme : %s", MON_ID, ctime(&t));
     display_clock("Evenement local 3 : Heure systeme");
 
     vector_clock[MON_ID - 1]++;

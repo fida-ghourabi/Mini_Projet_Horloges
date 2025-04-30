@@ -8,59 +8,59 @@
 
 #pragma comment(lib, "ws2_32.lib")
 
-#define PORT1 6001
 #define PORT2 6002
+#define PORT1 6001
 #define PORT3 6003
 #define PORT4 6004
-#define MON_ID 1
+#define MON_ID 2
 #define NB_PROC 4
 
 const char *IP = "127.0.0.1";
 volatile int stop = 0;
 SOCKET server_socket;
 
-int vector_clock[NB_PROC] = {0}; // Initialisé à [0,0,0,0]
+int matrix_clock[NB_PROC][NB_PROC] = {0};
 
-// Structure du message contenant un vecteur d'horloge
 typedef struct {
     int sender_id;
-    int vector[NB_PROC];
+    int matrix[NB_PROC][NB_PROC];
 } Message;
 
-void print_vector(const int *v) {
-    printf("[");
+void print_matrix(int matrix[NB_PROC][NB_PROC]) {
     for (int i = 0; i < NB_PROC; i++) {
-        printf("%d", v[i]);
-        if (i < NB_PROC - 1) printf(", ");
+        printf("[");
+        for (int j = 0; j < NB_PROC; j++) {
+            printf("%d", matrix[i][j]);
+            if (j < NB_PROC - 1) printf(", ");
+        }
+        printf("]\n");
     }
-    printf("]");
 }
 
 void display_clock(const char *event) {
-    printf("[P%d] %s | Horloge vectorielle : ", MON_ID, event);
-    print_vector(vector_clock);
+    printf("[P%d] %s\nHorloge matricielle :\n", MON_ID, event);
+    print_matrix(matrix_clock);
     printf("\n");
 }
 
-// Mise à jour à la réception : max composant par composant, puis incrément propre case
 void update_on_receive(Message msg) {
-    printf("[P%d] Recu de P%d | Vecteur recu : ", MON_ID, msg.sender_id);
-    print_vector(msg.vector);
-    printf("\n");
+    printf("[P%d] Recu de P%d | Matrice recue :\n", MON_ID, msg.sender_id);
+    print_matrix(msg.matrix);
 
-    for (int i = 0; i < NB_PROC; i++) {
-        if (vector_clock[i] < msg.vector[i]) {
-            vector_clock[i] = msg.vector[i];
+    for (int j = 0; j < NB_PROC; j++) {
+        for (int k = 0; k < NB_PROC; k++) {
+            if (matrix_clock[j][k] < msg.matrix[j][k]) {
+                matrix_clock[j][k] = msg.matrix[j][k];
+            }
         }
     }
-    vector_clock[MON_ID - 1]++; // Incrément propre case après réception
 
-    printf("[P%d] Nouvelle horloge : ", MON_ID);
-    print_vector(vector_clock);
+    matrix_clock[MON_ID - 1][MON_ID - 1]++;
+    printf("[P%d] Nouvelle horloge :\n", MON_ID);
+    print_matrix(matrix_clock);
     printf("\n");
 }
 
-// Envoi : incrément propre case puis envoyer le vecteur
 void send_message(int port, int dest_id) {
     SOCKET sock = socket(AF_INET, SOCK_STREAM, 0);
     if (sock == INVALID_SOCKET) {
@@ -85,23 +85,24 @@ void send_message(int port, int dest_id) {
         return;
     }
 
-    vector_clock[MON_ID - 1]++; // Incrément avant l'envoi
-
+    // Mise à jour : événement local + envoi à P_dest
+    matrix_clock[MON_ID - 1][MON_ID - 1]++;
+    matrix_clock[MON_ID - 1][dest_id - 1]++;
 
     Message msg;
     msg.sender_id = MON_ID;
-    for (int i = 0; i < NB_PROC; i++) {
-        msg.vector[i] = vector_clock[i];
-    }
+    for (int i = 0; i < NB_PROC; i++)
+        for (int j = 0; j < NB_PROC; j++)
+            msg.matrix[i][j] = matrix_clock[i][j];
 
-    printf("[P%d] Envoi a P%d | Horloge envoyee : ", MON_ID, dest_id);
-    print_vector(msg.vector);
+    printf("[P%d] Envoi a P%d | Matrice envoyee :\n", MON_ID, dest_id);
+    print_matrix(msg.matrix);
     printf("\n");
 
     send(sock, (char*)&msg, sizeof(msg), 0);
     closesocket(sock);
-  
 
+    
 }
 
 DWORD WINAPI receive_thread(LPVOID lpParam) {
@@ -116,7 +117,7 @@ DWORD WINAPI receive_thread(LPVOID lpParam) {
     }
 
     server_addr.sin_family = AF_INET;
-    server_addr.sin_port = htons(PORT1);
+    server_addr.sin_port = htons(PORT2);
     server_addr.sin_addr.s_addr = inet_addr(IP);
 
     if (bind(server_socket, (SOCKADDR*)&server_addr, sizeof(server_addr)) == SOCKET_ERROR) {
@@ -129,7 +130,7 @@ DWORD WINAPI receive_thread(LPVOID lpParam) {
         return 1;
     }
 
-    printf("[P%d] Serveur pret sur le port %d\n", MON_ID, PORT1);
+    printf("[P%d] Serveur pret sur le port %d\n", MON_ID, PORT2);
 
     while (!stop) {
         SOCKET client_socket = accept(server_socket, (SOCKADDR*)&client_addr, &addr_len);
@@ -148,38 +149,37 @@ DWORD WINAPI receive_thread(LPVOID lpParam) {
 
 int main() {
     WSADATA wsa;
-    WSAStartup(MAKEWORD(2,2), &wsa);
+    WSAStartup(MAKEWORD(2, 2), &wsa);
 
     CreateThread(NULL, 0, receive_thread, NULL, 0, NULL);
-    Sleep(1000); // Attendre que tous les serveurs soient prêts
+    Sleep(1000);
 
-    vector_clock[MON_ID - 1]++;
+    matrix_clock[MON_ID - 1][MON_ID - 1]++;
     display_clock("Evenement local 1 : Affichage");
 
-    vector_clock[MON_ID - 1]++;
-    int x = 4; x++;
+    matrix_clock[MON_ID - 1][MON_ID - 1]++;
+    int x = 10; x += 2;
     display_clock("Evenement local 2 : Incrementation");
 
-    vector_clock[MON_ID - 1]++;
+    matrix_clock[MON_ID - 1][MON_ID - 1]++;
     time_t t = time(NULL);
     printf("[P%d] Heure systeme : %s", MON_ID, ctime(&t));
     display_clock("Evenement local 3 : Heure systeme");
 
-    vector_clock[MON_ID - 1]++;
-    int y = x + 5;
-    display_clock("Evenement local 4 : Addition");
+    matrix_clock[MON_ID - 1][MON_ID - 1]++;
+    int y = x * 3;
+    display_clock("Evenement local 4 : Multiplication");
 
-    vector_clock[MON_ID - 1]++;
+    matrix_clock[MON_ID - 1][MON_ID - 1]++;
     Sleep(1000);
     display_clock("Evenement local 5 : Pause 1s");
 
-    // Envois
-    send_message(PORT2, 2); Sleep(200);
+    send_message(PORT1, 1); Sleep(200);
     send_message(PORT3, 3); Sleep(200);
     send_message(PORT4, 4); Sleep(200);
-    send_message(PORT2, 2);
+    send_message(PORT1, 1);
 
-    Sleep(5000); // Laisser le temps de recevoir tous les messages
+    Sleep(5000);
     stop = 1;
     closesocket(server_socket);
     Sleep(200);
