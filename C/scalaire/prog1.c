@@ -12,40 +12,36 @@
 #define PORT2 6002
 #define PORT3 6003
 #define PORT4 6004
-#define MON_ID 1  // Identifiant de ce processus
+#define MON_ID 1
 
 int scalar_clock = 0;
 const char *IP = "127.0.0.1";
 volatile int stop = 0;
 SOCKET server_socket;
 
-// Structure du message
 typedef struct {
     int sender_id;
     int scalar_clock;
 } Message;
 
 void display_clock(const char *event) {
-    printf("[Processus %d] %s | Horloge scalaire : %d\n", MON_ID, event, scalar_clock);
+    printf("[P%d] %s | Horloge scalaire : %d\n", MON_ID, event, scalar_clock);
 }
 
 void update_on_receive(Message msg) {
     scalar_clock = (scalar_clock > msg.scalar_clock ? scalar_clock : msg.scalar_clock) + 1;
-    printf("[Processus %d] Reçu de P%d | Horloge reçue : %d | Nouvelle horloge : %d\n",
+    printf("[P%d] Recu de P%d | Horloge recue : %d -> Nouvelle horloge : %d\n",
            MON_ID, msg.sender_id, msg.scalar_clock, scalar_clock);
 }
 
 void send_message(int port, int dest_id) {
-    SOCKET sock;
-    SOCKADDR_IN server;
-    Message msg = { MON_ID, scalar_clock };
-
-    sock = socket(AF_INET, SOCK_STREAM, 0);
+    SOCKET sock = socket(AF_INET, SOCK_STREAM, 0);
     if (sock == INVALID_SOCKET) {
         printf("Erreur socket : %d\n", WSAGetLastError());
         return;
     }
 
+    SOCKADDR_IN server;
     server.sin_family = AF_INET;
     server.sin_port = htons(port);
     server.sin_addr.s_addr = inet_addr(IP);
@@ -57,16 +53,22 @@ void send_message(int port, int dest_id) {
     }
 
     if (try_count == 5) {
-        printf("Connexion échouée au port %d après plusieurs tentatives (code %d)\n", port, WSAGetLastError());
+        printf("[P%d] Connexion echouee au port %d (code %d)\n", MON_ID, port, WSAGetLastError());
         closesocket(sock);
         return;
     }
 
+    // Préparer et afficher le message AVANT envoi
+    Message msg;
+    msg.sender_id = MON_ID;
+    msg.scalar_clock = scalar_clock;
+
+    printf("[P%d] Envoi a P%d | Horloge scalaire envoyee : %d\n", MON_ID, dest_id, scalar_clock);
+
     send(sock, (char*)&msg, sizeof(msg), 0);
-    
-    printf("[Processus %d] Envoi à P%d | Horloge locale : %d\n", MON_ID, dest_id, scalar_clock);
-    scalar_clock++;
-closesocket(sock);
+    scalar_clock++;  // Mise à jour locale après l’envoi
+
+    closesocket(sock);
 }
 
 DWORD WINAPI receive_thread(LPVOID lpParam) {
@@ -76,7 +78,7 @@ DWORD WINAPI receive_thread(LPVOID lpParam) {
 
     server_socket = socket(AF_INET, SOCK_STREAM, 0);
     if (server_socket == INVALID_SOCKET) {
-        printf("Erreur création socket serveur : %d\n", WSAGetLastError());
+        printf("Erreur creation socket serveur : %d\n", WSAGetLastError());
         return 1;
     }
 
@@ -94,13 +96,12 @@ DWORD WINAPI receive_thread(LPVOID lpParam) {
         return 1;
     }
 
-    printf("[Processus %d] Serveur prêt sur le port %d\n", MON_ID, PORT1);
+    printf("[P%d] Serveur en ecoute sur le port %d\n", MON_ID, PORT1);
 
     while (!stop) {
         SOCKET client_socket = accept(server_socket, (SOCKADDR*)&client_addr, &addr_len);
         if (client_socket == INVALID_SOCKET) {
             if (stop) break;
-            printf("Erreur accept : %d\n", WSAGetLastError());
             continue;
         }
         recv(client_socket, (char*)&msg, sizeof(msg), 0);
@@ -117,40 +118,41 @@ int main() {
     WSAStartup(MAKEWORD(2,2), &wsa);
 
     CreateThread(NULL, 0, receive_thread, NULL, 0, NULL);
-    Sleep(1000);
+    Sleep(1000); // Attendre que tous les serveurs soient prêts
 
     scalar_clock++;
-    display_clock("Événement local 1 : Affichage");
+    display_clock("Evenement local 1 : Affichage");
 
     scalar_clock++;
-    int x = 4;
-    x++;
-    display_clock("Événement local 2 : Incrémentation");
+    int x = 4; x++;
+    display_clock("Evenement local 2 : Incrementation");
 
     scalar_clock++;
     time_t t = time(NULL);
-    printf("Heure actuelle : %s", ctime(&t));
-    display_clock("Événement local 3 : Heure système");
+    printf("[P%d] Heure systeme : %s", MON_ID, ctime(&t));
+    display_clock("Evenement local 3 : Heure systeme");
 
     scalar_clock++;
     int y = x + 5;
-    display_clock("Événement local 4 : Addition");
+    display_clock("Evenement local 4 : Addition");
 
     scalar_clock++;
     Sleep(1000);
-    display_clock("Événement local 5 : Pause 1s");
+    display_clock("Evenement local 5 : Pause 1s");
 
+    // Envois
     send_message(PORT2, 2); Sleep(200);
     send_message(PORT3, 3); Sleep(200);
     send_message(PORT4, 4); Sleep(200);
     send_message(PORT2, 2);
 
-    Sleep(5000);
+    Sleep(5000); // Temps pour réceptionner tous les messages
     stop = 1;
     closesocket(server_socket);
     Sleep(200);
     WSACleanup();
-    printf("Appuyez sur Entrée pour quitter...\n");
+
+    printf("Appuyez sur Entree pour quitter...\n");
     getchar();
     return 0;
 }
