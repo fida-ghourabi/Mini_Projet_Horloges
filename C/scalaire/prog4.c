@@ -65,7 +65,7 @@ void send_message(int port, int dest_id) {
     printf("[P%d] Envoi a P%d | Horloge scalaire envoyee : %d\n", MON_ID, dest_id, scalar_clock);
     send(sock, (char*)&msg, sizeof(msg), 0);
     scalar_clock++;
-
+    printf("[P%d] Nouvelle horloge scalaire : %d\n", MON_ID, scalar_clock);
     closesocket(sock);
 }
 

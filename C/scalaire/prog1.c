@@ -67,6 +67,7 @@ void send_message(int port, int dest_id) {
 
     send(sock, (char*)&msg, sizeof(msg), 0);
     scalar_clock++;  // Mise à jour locale après l’envoi
+    printf("[P%d] Nouvelle horloge scalaire : %d\n", MON_ID, scalar_clock);
 
     closesocket(sock);
 }
