@@ -124,16 +124,43 @@ void ProcessSocketData(char *data) {
 void UpdateGUI(int pid, const char *event, const char *matrix_rows[4]) {
     if (pid < 1 || pid > 4) return;
 
-    char event_text[256];
-    sprintf(event_text, "%s", event);
+    // Buffer to store the formatted event text
+    char event_text[1024] = {0};
+
+    // Check if the event is a message receipt (contains "Received from")
+    if (strstr(event, "Received from") && matrix_rows != NULL) {
+        // Format the received matrix and new matrix clock
+        sprintf(event_text, "%s\nMatrice recue :\n%s\n%s\n%s\n%s\nNouvelle horloge :\n%s\n%s\n%s\n%s", 
+                event, 
+                matrix_rows[0], matrix_rows[1], matrix_rows[2], matrix_rows[3],
+                matrix_rows[0], matrix_rows[1], matrix_rows[2], matrix_rows[3]);
+    } else {
+        // For local events or sent messages, just show the event
+        sprintf(event_text, "%s", event);
+    }
+
+    // Append to the process's event log
     strcat(event_logs[pid - 1], event_text);
-    strcat(event_logs[pid - 1], "\n");
-    SendMessage(hwndEventLists[pid - 1], LB_ADDSTRING, 0, (LPARAM)event_text);
+    strcat(event_logs[pid - 1], "\n\n"); // Extra newline for readability
 
+    // Add each line of the event text to the event list box
+    char *line = strtok(event_text, "\n");
+    while (line != NULL) {
+        SendMessage(hwndEventLists[pid - 1], LB_ADDSTRING, 0, (LPARAM)line);
+        line = strtok(NULL, "\n");
+    }
+
+    // Append to the global log
     strcat(global_log, event_text);
-    strcat(global_log, "\n");
-    SendMessage(hwndGlobalLog, LB_ADDSTRING, 0, (LPARAM)event_text);
+    strcat(global_log, "\n\n");
+    line = event_text;
+    line = strtok(event_text, "\n");
+    while (line != NULL) {
+        SendMessage(hwndGlobalLog, LB_ADDSTRING, 0, (LPARAM)line);
+        line = strtok(NULL, "\n");
+    }
 
+    // Update the matrix clock display if provided
     if (matrix_rows != NULL) {
         char clock_text[256];
         sprintf(clock_text, "Matrix Clock:\n%s\n%s\n%s\n%s", 
@@ -141,6 +168,7 @@ void UpdateGUI(int pid, const char *event, const char *matrix_rows[4]) {
         SetWindowText(hwndClocks[pid - 1], clock_text);
     }
 
+    // Redraw the window to update the message flow visualization
     InvalidateRect(GetActiveWindow(), NULL, TRUE);
 }
 
