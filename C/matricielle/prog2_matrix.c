@@ -12,6 +12,7 @@
 #define PORT1 6001
 #define PORT3 6003
 #define PORT4 6004
+#define PORT_GUI 6005
 #define MON_ID 2
 #define NB_PROC 4
 
@@ -26,14 +27,33 @@ typedef struct {
     int matrix[NB_PROC][NB_PROC];
 } Message;
 
+void send_to_gui(const char *update) {
+    SOCKET sock = socket(AF_INET, SOCK_STREAM, 0);
+    if (sock == INVALID_SOCKET) return;
+
+    SOCKADDR_IN server;
+    server.sin_family = AF_INET;
+    server.sin_port = htons(PORT_GUI);
+    server.sin_addr.s_addr = inet_addr("127.0.0.1");
+
+    if (connect(sock, (SOCKADDR*)&server, sizeof(server)) == SOCKET_ERROR) {
+        closesocket(sock);
+        return;
+    }
+
+    send(sock, update, strlen(update), 0);
+    closesocket(sock);
+}
+
 void print_matrix(int matrix[NB_PROC][NB_PROC]) {
     for (int i = 0; i < NB_PROC; i++) {
         printf("[");
         for (int j = 0; j < NB_PROC; j++) {
             printf("%d", matrix[i][j]);
             if (j < NB_PROC - 1) printf(", ");
+            else printf("]");
         }
-        printf("]\n");
+        printf("\n");
     }
 }
 
@@ -41,6 +61,16 @@ void display_clock(const char *event) {
     printf("[P%d] %s\nHorloge matricielle :\n", MON_ID, event);
     print_matrix(matrix_clock);
     printf("\n");
+
+    char update[512];
+    char matrix_str[4][32];
+    for (int i = 0; i < NB_PROC; i++) {
+        sprintf(matrix_str[i], "[%d, %d, %d, %d]", 
+                matrix_clock[i][0], matrix_clock[i][1], matrix_clock[i][2], matrix_clock[i][3]);
+    }
+    sprintf(update, "UPDATE:%d:%s:%s:%s:%s:%s", 
+            MON_ID, event, matrix_str[0], matrix_str[1], matrix_str[2], matrix_str[3]);
+    send_to_gui(update);
 }
 
 void update_on_receive(Message msg) {
@@ -59,6 +89,16 @@ void update_on_receive(Message msg) {
     printf("[P%d] Nouvelle horloge :\n", MON_ID);
     print_matrix(matrix_clock);
     printf("\n");
+
+    char update[512];
+    char matrix_str[4][32];
+    for (int i = 0; i < NB_PROC; i++) {
+        sprintf(matrix_str[i], "[%d, %d, %d, %d]", 
+                matrix_clock[i][0], matrix_clock[i][1], matrix_clock[i][2], matrix_clock[i][3]);
+    }
+    sprintf(update, "UPDATE:%d:Received from P%d:%s:%s:%s:%s", 
+            MON_ID, msg.sender_id, matrix_str[0], matrix_str[1], matrix_str[2], matrix_str[3]);
+    send_to_gui(update);
 }
 
 void send_message(int port, int dest_id) {
@@ -85,7 +125,6 @@ void send_message(int port, int dest_id) {
         return;
     }
 
-    // Mise à jour : événement local + envoi à P_dest
     matrix_clock[MON_ID - 1][MON_ID - 1]++;
     matrix_clock[MON_ID - 1][dest_id - 1]++;
 
@@ -102,7 +141,9 @@ void send_message(int port, int dest_id) {
     send(sock, (char*)&msg, sizeof(msg), 0);
     closesocket(sock);
 
-    
+    char gui_msg[256];
+    sprintf(gui_msg, "MSG:%d:%d", MON_ID, dest_id);
+    send_to_gui(gui_msg);
 }
 
 DWORD WINAPI receive_thread(LPVOID lpParam) {
