@@ -13,17 +13,41 @@ public class Prog2Vectoriel {
 
     static int[] vectorClock = new int[NB_PROC];
 
+    static void sendToGUI(String log) {
+        try (Socket guiSocket = new Socket("127.0.0.1", 7002); // chaque processus utilise son propre port
+             PrintWriter out = new PrintWriter(guiSocket.getOutputStream(), true)) {
+            out.println("[P" + MON_ID + "] " + log);
+        } catch (IOException e) {
+            System.out.println("Impossible d’envoyer au GUI : " + e.getMessage());
+        }
+    }
+
     static void displayClock(String event) {
-        System.out.printf("[P%d] %s | Horloge vectorielle : %s%n", MON_ID, event, Arrays.toString(vectorClock));
+        //System.out.printf("[P%d] %s | Horloge vectorielle : %s%n", MON_ID, event, Arrays.toString(vectorClock));
+
+        //pour l'interface
+        String log = String.format("%s | Horloge vectorielle : %s%n", event, Arrays.toString(vectorClock));
+        System.out.printf("[P%d] %s%n", MON_ID, log);
+        sendToGUI(log);
     }
 
     static void updateOnReceive(MessageVectoriel msg) {
-        System.out.printf("[P%d] Recu de P%d | Vecteur recu : %s%n", MON_ID, msg.senderId, Arrays.toString(msg.vector));
+        //System.out.printf("[P%d] Recu de P%d | Vecteur recu : %s%n", MON_ID, msg.senderId, Arrays.toString(msg.vector));
+
+         //pour l'interface
+         String log = String.format("Recu de P%d | Vecteur recu : %s%n", msg.senderId, Arrays.toString(msg.vector));
+         System.out.printf("[P%d] %s%n", MON_ID, log);
+         sendToGUI(log); 
+
         for (int i = 0; i < NB_PROC; i++) {
             vectorClock[i] = Math.max(vectorClock[i], msg.vector[i]);
         }
         vectorClock[MON_ID - 1]++;
-        System.out.printf("[P%d] Nouvelle horloge : %s%n", MON_ID, Arrays.toString(vectorClock));
+        //System.out.printf("[P%d] Nouvelle horloge : %s%n", MON_ID, Arrays.toString(vectorClock));
+         //pour l'interface
+         String log1 = String.format("Nouvelle horloge : %s%n", Arrays.toString(vectorClock));
+         System.out.printf("[P%d] %s%n", MON_ID, log1);
+         sendToGUI(log1);
     }
 
     static void sendMessage(int port, int destId) {
@@ -33,7 +57,12 @@ public class Prog2Vectoriel {
 
             vectorClock[MON_ID - 1]++;
             MessageVectoriel msg = new MessageVectoriel(MON_ID, vectorClock);
-            System.out.printf("[P%d] Envoi a P%d | Horloge envoyee : %s%n", MON_ID, destId, Arrays.toString(vectorClock));
+            //System.out.printf("[P%d] Envoi a P%d | Horloge envoyee : %s%n", MON_ID, destId, Arrays.toString(vectorClock));
+
+            //pour l'interface
+            String log = String.format("Envoi a P%d | Horloge envoyee : %s%n", destId, Arrays.toString(vectorClock));
+            System.out.printf("[P%d] %s%n", MON_ID, log);
+            sendToGUI(log);
             out.writeObject(msg);
         } catch (IOException e) {
             System.out.printf("[P%d] Connexion echouee au port %d (%s)%n", MON_ID, port, e.getMessage());
@@ -65,7 +94,7 @@ public class Prog2Vectoriel {
 
         vectorClock[MON_ID - 1]++; displayClock("Evenement local 1 : Affichage");
         vectorClock[MON_ID - 1]++; int x = 7; x--; displayClock("Evenement local 2 : Decrementation");
-        vectorClock[MON_ID - 1]++; System.out.printf("[P%d] Heure systeme : %s", MON_ID, new java.util.Date()); displayClock("Evenement local 3 : Heure systeme");
+        vectorClock[MON_ID - 1]++; System.out.printf("[P%d] Heure systeme : %s\n", MON_ID, new java.util.Date()); displayClock("Evenement local 3 : Heure systeme");
         vectorClock[MON_ID - 1]++; int y = x * 3; displayClock("Evenement local 4 : Multiplication");
         Thread.sleep(1000);vectorClock[MON_ID - 1]++; displayClock("Evenement local 5 : Pause 1s");
 

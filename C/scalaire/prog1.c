@@ -174,8 +174,9 @@ int main() {
     printf("[P%d] Valeur de y : %d\n", MON_ID, y); // Use y to avoid warning
     display_clock("Evenement local 4 : Addition");
 
-    scalar_clock++;
+    
     Sleep(1000);
+    scalar_clock++;
     display_clock("Evenement local 5 : Pause 1s");
 
     // Envois

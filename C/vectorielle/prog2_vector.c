@@ -6,7 +6,6 @@
 #include <windows.h>
 #include <time.h>
 
-#pragma comment(lib, "ws2_32.lib")
 
 #define PORT2 6002
 #define PORT1 6001
@@ -164,6 +163,7 @@ int main() {
 
     vector_clock[MON_ID - 1]++;
     int y = x * 3;
+    printf("[P%d] Valeur de y : %d\n", MON_ID, y); // Use y to avoid warning
     display_clock("Evenement local 4 : Multiplication");
 
     

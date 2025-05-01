@@ -2,6 +2,13 @@
   "version": "0.2.0",
   "configurations": [
     {
+      "type": "java",
+      "name": "Prog1Vectoriel",
+      "request": "launch",
+      "mainClass": "Prog1Vectoriel",
+      "projectName": "Mini_Projet_Horloges_25d98e8a"
+    },
+    {
       "name": "C/C++ Runner: Debug Session",
       "type": "cppdbg",
       "request": "launch",

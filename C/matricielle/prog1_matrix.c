@@ -7,7 +7,6 @@
 #include <time.h>
 #include <string.h>
 
-#pragma comment(lib, "ws2_32.lib")
 
 #define PORT1 6001
 #define PORT2 6002

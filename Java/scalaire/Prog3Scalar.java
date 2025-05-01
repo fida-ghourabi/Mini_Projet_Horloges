@@ -9,14 +9,29 @@ public class Prog3Scalar {
     static final String IP = "127.0.0.1";
     static AtomicBoolean stop = new AtomicBoolean(false);
 
+    static void sendToGUI(String log) {
+        try (Socket guiSocket = new Socket("127.0.0.1", 7001); // chaque processus utilise son propre port
+             PrintWriter out = new PrintWriter(guiSocket.getOutputStream(), true)) {
+            out.println("[P" + MON_ID + "] " + log);
+        } catch (IOException e) {
+            System.out.println("Impossible d’envoyer au GUI : " + e.getMessage());
+        }
+    }
+
     static void displayClock(String event) {
-        System.out.printf("[P%d] %s | Horloge scalaire : %d%n", MON_ID, event, scalarClock);
+        //pour l'interface
+        String log = event + " | Horloge scalaire : " + scalarClock;
+        System.out.printf("[P%d] %s%n", MON_ID, log);
+        sendToGUI(log);
     }
 
     static void updateOnReceive(Message msg) {
         scalarClock = Math.max(scalarClock, msg.scalarClock) + 1;
-        System.out.printf("[P%d] Recu de P%d | Horloge recue : %d -> Nouvelle horloge : %d%n",
-                MON_ID, msg.senderId, msg.scalarClock, scalarClock);
+        
+        //pour l'interface
+        String log = String.format("Recu de P%d | Horloge recue : %d -> Nouvelle horloge : %d%n", msg.senderId, msg.scalarClock, scalarClock);
+        System.out.printf("[P%d] %s%n", MON_ID, log);
+        sendToGUI(log);
     }
 
     static void sendMessage(int port, int destId) {
@@ -28,8 +43,12 @@ public class Prog3Scalar {
             scalarClock++;
             Message msg = new Message(MON_ID, scalarClock);
 
-            System.out.printf("[P%d] Envoi a P%d | Horloge scalaire envoyee : %d%n", MON_ID, destId, scalarClock);
+            
+            //pour l'interface
+            String log = String.format("Envoi a P%d | Horloge scalaire envoyee : %d", destId, scalarClock);
+            System.out.printf("[P%d] %s%n", MON_ID, log);
             out.writeObject(msg);
+            sendToGUI(log);
 
         } catch (IOException e) {
             System.out.printf("[P%d] Connexion echouee au port %d (%s)%n", MON_ID, port, e.getMessage());
@@ -71,7 +90,7 @@ public class Prog3Scalar {
 
         // Evénement local 3
         scalarClock++;
-        System.out.printf("[P%d] Heure systeme : %s", MON_ID, new java.util.Date());
+        System.out.printf("[P%d] Heure systeme : %s\n", MON_ID, new java.util.Date());
         displayClock("Evenement local 3 : Heure systeme");
 
         // Evénement local 4
@@ -80,6 +99,7 @@ public class Prog3Scalar {
         displayClock("Evenement local 4 : Division");
 
         // Evénement local 5
+        Thread.sleep(1000);
         scalarClock++;
         displayClock("Evenement local 5 : Pause 1s");
 
