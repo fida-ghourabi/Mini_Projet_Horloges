@@ -1,0 +1,95 @@
+import java.io.*;
+import java.net.*;
+import java.util.concurrent.atomic.AtomicBoolean;
+
+public class Prog2Scalar {
+    static final int MON_ID = 2;
+    static final int PORT1 = 6001, PORT2 = 6002, PORT3 = 6003, PORT4 = 6004;
+    static int scalarClock = 0;
+    static final String IP = "127.0.0.1";
+    static AtomicBoolean stop = new AtomicBoolean(false);
+
+    static void displayClock(String event) {
+        System.out.printf("[P%d] %s | Horloge scalaire : %d%n", MON_ID, event, scalarClock);
+    }
+
+    static void updateOnReceive(Message msg) {
+        scalarClock = Math.max(scalarClock, msg.scalarClock) + 1;
+        System.out.printf("[P%d] Recu de P%d | Horloge recue : %d -> Nouvelle horloge : %d%n",
+                MON_ID, msg.senderId, msg.scalarClock, scalarClock);
+    }
+
+    static void sendMessage(int port, int destId) {
+        try (Socket socket = new Socket()) {
+            socket.connect(new InetSocketAddress(IP, port), 2500);
+            ObjectOutputStream out = new ObjectOutputStream(socket.getOutputStream());
+
+            Message msg = new Message(MON_ID, scalarClock);
+
+            System.out.printf("[P%d] Envoi a P%d | Horloge scalaire envoyee : %d%n", MON_ID, destId, scalarClock);
+            out.writeObject(msg);
+            scalarClock++;
+            System.out.printf("[P%d] Nouvelle horloge scalaire : %d%n", MON_ID, scalarClock);
+
+        } catch (IOException e) {
+            System.out.printf("[P%d] Connexion echouee au port %d (%s)%n", MON_ID, port, e.getMessage());
+        }
+    }
+
+    static class Receiver extends Thread {
+        public void run() {
+            try (ServerSocket serverSocket = new ServerSocket(PORT2)) {
+                System.out.printf("[P%d] Serveur en ecoute sur le port %d%n", MON_ID, PORT2);
+                while (!stop.get()) {
+                    try (Socket clientSocket = serverSocket.accept();
+                         ObjectInputStream in = new ObjectInputStream(clientSocket.getInputStream())) {
+                        Message msg = (Message) in.readObject();
+                        System.out.printf("[P%d] Message reçu de P%d | Horloge reçue : %d%n", MON_ID, msg.senderId, msg.scalarClock);
+                        updateOnReceive(msg);
+                    } catch (Exception e) {
+                        System.out.println("[P" + MON_ID + "] Erreur lors de la réception du message: " + e.getMessage());
+                        e.printStackTrace();
+                    }
+                }
+            } catch (IOException e) {
+                System.out.println("[P" + MON_ID + "] Erreur serveur : " + e.getMessage());
+                e.printStackTrace();
+            }
+        }
+    }
+
+    public static void main(String[] args) throws Exception {
+        new Receiver().start();
+        Thread.sleep(1000);
+
+        scalarClock++;
+        displayClock("Evenement local 1 : Affichage");
+
+        scalarClock++;
+        int x = 7;
+        x--;
+        displayClock("Evenement local 2 : Incrementation");
+
+        scalarClock++;
+        System.out.printf("[P%d] Heure systeme : %s", MON_ID, new java.util.Date());
+        displayClock("Evenement local 3 : Heure systeme");
+
+        scalarClock++;
+        int y = x * 3;
+        displayClock("Evenement local 4 : Multiplication");
+
+        scalarClock++;
+        Thread.sleep(1000);
+        displayClock("Evenement local 5 : Pause 1s");
+
+        sendMessage(PORT1, 1); Thread.sleep(200);
+        sendMessage(PORT3, 3); Thread.sleep(200);
+        sendMessage(PORT4, 4); Thread.sleep(200);
+        sendMessage(PORT1, 1);
+
+        Thread.sleep(5000);
+        stop.set(true);
+        System.out.println("Appuyez sur Entrée pour quitter...");
+        System.in.read();
+    }
+}
