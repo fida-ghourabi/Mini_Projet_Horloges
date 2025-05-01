@@ -65,14 +65,15 @@ void send_message(int port, int dest_id) {
         return;
     }
 
+
+
+    scalar_clock++;
     Message msg;
     msg.sender_id = MON_ID;
     msg.scalar_clock = scalar_clock;
 
     printf("[P%d] Envoi a P%d | Horloge scalaire envoyee : %d\n", MON_ID, dest_id, scalar_clock);
     send(sock, (char*)&msg, sizeof(msg), 0);
-    scalar_clock++;
-    printf("[P%d] Nouvelle horloge scalaire : %d\n", MON_ID, scalar_clock);
     char update[256];
     sprintf(update, "MSG:%d:%d:%d", MON_ID, dest_id, scalar_clock);
     send_to_gui(update);

@@ -24,12 +24,12 @@ public class Prog3Scalar {
             socket.connect(new InetSocketAddress(IP, port), 2500);
             ObjectOutputStream out = new ObjectOutputStream(socket.getOutputStream());
 
+            // Incrémentation de l'horloge avant l'envoi
+            scalarClock++;
             Message msg = new Message(MON_ID, scalarClock);
 
             System.out.printf("[P%d] Envoi a P%d | Horloge scalaire envoyee : %d%n", MON_ID, destId, scalarClock);
             out.writeObject(msg);
-            scalarClock++;
-            System.out.printf("[P%d] Nouvelle horloge scalaire : %d%n", MON_ID, scalarClock);
 
         } catch (IOException e) {
             System.out.printf("[P%d] Connexion echouee au port %d (%s)%n", MON_ID, port, e.getMessage());
@@ -44,16 +44,13 @@ public class Prog3Scalar {
                     try (Socket clientSocket = serverSocket.accept();
                          ObjectInputStream in = new ObjectInputStream(clientSocket.getInputStream())) {
                         Message msg = (Message) in.readObject();
-                        System.out.printf("[P%d] Message reçu de P%d | Horloge reçue : %d%n", MON_ID, msg.senderId, msg.scalarClock);
                         updateOnReceive(msg);
                     } catch (Exception e) {
                         System.out.println("[P" + MON_ID + "] Erreur lors de la réception du message: " + e.getMessage());
-                        e.printStackTrace();
                     }
                 }
             } catch (IOException e) {
                 System.out.println("[P" + MON_ID + "] Erreur serveur : " + e.getMessage());
-                e.printStackTrace();
             }
         }
     }
@@ -62,29 +59,37 @@ public class Prog3Scalar {
         new Receiver().start();
         Thread.sleep(1000);
 
+        // Evénement local 1
         scalarClock++;
         displayClock("Evenement local 1 : Affichage");
 
+        // Evénement local 2
         scalarClock++;
         int x = 7;
-        x++;
-        displayClock("Evenement local 2 : Incrementation");
+        x--;
+        displayClock("Evenement local 2 : Decrementation");
 
+        // Evénement local 3
         scalarClock++;
         System.out.printf("[P%d] Heure systeme : %s", MON_ID, new java.util.Date());
         displayClock("Evenement local 3 : Heure systeme");
 
+        // Evénement local 4
         scalarClock++;
         int y = x / 3;
         displayClock("Evenement local 4 : Division");
 
+        // Evénement local 5
         scalarClock++;
-        Thread.sleep(1000);
         displayClock("Evenement local 5 : Pause 1s");
 
-        sendMessage(PORT1, 1); Thread.sleep(200);
-        sendMessage(PORT2, 2); Thread.sleep(200);
-        sendMessage(PORT4, 4); Thread.sleep(200);
+        // Envoi des messages après l'incrémentation et l'affichage
+        sendMessage(PORT1, 1);
+        Thread.sleep(200);
+        sendMessage(PORT2, 2);
+        Thread.sleep(200);
+        sendMessage(PORT4, 4);
+        Thread.sleep(200);
         sendMessage(PORT1, 1);
 
         Thread.sleep(5000);

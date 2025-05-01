@@ -169,8 +169,9 @@ int main() {
     int y = x + 5;
     display_clock("Evenement local 4 : Addition");
 
-    vector_clock[MON_ID - 1]++;
+    
     Sleep(1000);
+    vector_clock[MON_ID - 1]++;
     display_clock("Evenement local 5 : Pause 1s");
 
     // Envois
