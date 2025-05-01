@@ -6,8 +6,6 @@
 #include <windows.h>
 #include <time.h>
 
-#pragma comment(lib, "ws2_32.lib")
-
 #define PORT2 6002
 #define PORT1 6001
 #define PORT3 6003
@@ -24,14 +22,23 @@ typedef struct {
     int scalar_clock;
 } Message;
 
+// Forward declaration of send_to_gui
+void send_to_gui(const char *update);
+
 void display_clock(const char *event) {
     printf("[P%d] %s | Horloge scalaire : %d\n", MON_ID, event, scalar_clock);
+    char update[256];
+    sprintf(update, "UPDATE:%d:%s:%d", MON_ID, event, scalar_clock);
+    send_to_gui(update);
 }
 
 void update_on_receive(Message msg) {
     scalar_clock = (scalar_clock > msg.scalar_clock ? scalar_clock : msg.scalar_clock) + 1;
     printf("[P%d] Recu de P%d | Horloge recue : %d -> Nouvelle horloge : %d\n",
            MON_ID, msg.sender_id, msg.scalar_clock, scalar_clock);
+    char update[256];
+    sprintf(update, "UPDATE:%d:Received from P%d:%d", MON_ID, msg.sender_id, scalar_clock);
+    send_to_gui(update);
 }
 
 void send_message(int port, int dest_id) {
@@ -66,13 +73,15 @@ void send_message(int port, int dest_id) {
     send(sock, (char*)&msg, sizeof(msg), 0);
     scalar_clock++;
     printf("[P%d] Nouvelle horloge scalaire : %d\n", MON_ID, scalar_clock);
+    char update[256];
+    sprintf(update, "MSG:%d:%d:%d", MON_ID, dest_id, scalar_clock);
+    send_to_gui(update);
     closesocket(sock);
 }
 
 DWORD WINAPI receive_thread(LPVOID lpParam) {
     SOCKADDR_IN server_addr, client_addr;
     int addr_len = sizeof(client_addr);
-    Message msg;
 
     server_socket = socket(AF_INET, SOCK_STREAM, 0);
     if (server_socket == INVALID_SOCKET) {
@@ -102,13 +111,42 @@ DWORD WINAPI receive_thread(LPVOID lpParam) {
             if (stop) break;
             continue;
         }
-        recv(client_socket, (char*)&msg, sizeof(msg), 0);
-        update_on_receive(msg);
+        char buffer[256];
+        int bytes = recv(client_socket, buffer, sizeof(buffer) - 1, 0);
+        if (bytes > 0) {
+            buffer[bytes] = '\0';
+            if (strncmp(buffer, "CONTROL:STOP", 12) == 0) {
+                stop = 1;
+                closesocket(client_socket);
+                break;
+            }
+            Message msg;
+            memcpy(&msg, buffer, sizeof(msg));
+            update_on_receive(msg);
+        }
         closesocket(client_socket);
     }
 
     closesocket(server_socket);
     return 0;
+}
+
+void send_to_gui(const char *update) {
+    SOCKET sock = socket(AF_INET, SOCK_STREAM, 0);
+    if (sock == INVALID_SOCKET) return;
+
+    SOCKADDR_IN server;
+    server.sin_family = AF_INET;
+    server.sin_port = htons(6005);
+    server.sin_addr.s_addr = inet_addr("127.0.0.1");
+
+    if (connect(sock, (SOCKADDR*)&server, sizeof(server)) == SOCKET_ERROR) {
+        closesocket(sock);
+        return;
+    }
+
+    send(sock, update, strlen(update), 0);
+    closesocket(sock);
 }
 
 int main() {
@@ -128,10 +166,11 @@ int main() {
     scalar_clock++;
     time_t t = time(NULL);
     printf("[P%d] Heure systeme : %s", MON_ID, ctime(&t));
-    display_clock("Evénement local 3 : Heure systeme");
+    display_clock("Evenement local 3 : Heure systeme");
 
     scalar_clock++;
     int y = x * 3;
+    printf("[P%d] Valeur de y : %d\n", MON_ID, y); // Use y to avoid warning
     display_clock("Evenement local 4 : Multiplication");
 
     scalar_clock++;

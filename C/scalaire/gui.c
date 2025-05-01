@@ -1,0 +1,253 @@
+#define _WINSOCK_DEPRECATED_NO_WARNINGS
+#include <windows.h>
+#include <winsock2.h>
+#include <stdio.h>
+#include <string.h>
+
+#define WINDOW_WIDTH 800
+#define WINDOW_HEIGHT 600
+#define IDC_START 101
+#define IDC_STOP 102
+#define IDC_SEND 103
+#define IDC_RESET 104
+#define PORT_GUI 6005
+
+HINSTANCE hInst;
+SOCKET gui_socket;
+HWND hwndClocks[4], hwndEventLists[4], hwndGlobalLog;
+int scalar_clocks[4] = {0, 0, 0, 0};
+char event_logs[4][1024] = {0};
+char global_log[4096] = {0};
+
+// Forward declarations
+LRESULT CALLBACK WndProc(HWND, UINT, WPARAM, LPARAM);
+void StartServer(void);
+DWORD WINAPI HandleConnections(LPVOID param);
+void ProcessSocketData(char *data);
+void UpdateGUI(int pid, const char *event, int clock);
+void DrawMessages(HDC hdc);
+
+void StartServer(void) {
+    WSADATA wsa;
+    if (WSAStartup(MAKEWORD(2, 2), &wsa) != 0) {
+        printf("WSAStartup failed: %d\n", WSAGetLastError());
+        return;
+    }
+
+    gui_socket = socket(AF_INET, SOCK_STREAM, 0);
+    if (gui_socket == INVALID_SOCKET) {
+        printf("Socket creation failed: %d\n", WSAGetLastError());
+        return;
+    }
+
+    SOCKADDR_IN server;
+    server.sin_family = AF_INET;
+    server.sin_port = htons(PORT_GUI);
+    server.sin_addr.s_addr = INADDR_ANY;
+
+    if (bind(gui_socket, (SOCKADDR*)&server, sizeof(server)) == SOCKET_ERROR) {
+        printf("Bind failed: %d\n", WSAGetLastError());
+        closesocket(gui_socket);
+        return;
+    }
+
+    if (listen(gui_socket, 4) == SOCKET_ERROR) {
+        printf("Listen failed: %d\n", WSAGetLastError());
+        closesocket(gui_socket);
+        return;
+    }
+
+    CreateThread(NULL, 0, (LPTHREAD_START_ROUTINE)HandleConnections, NULL, 0, NULL);
+}
+
+DWORD WINAPI HandleConnections(LPVOID param) {
+    while (1) {
+        SOCKADDR_IN client;
+        int addr_len = sizeof(client);
+        SOCKET client_socket = accept(gui_socket, (SOCKADDR*)&client, &addr_len);
+        if (client_socket == INVALID_SOCKET) continue;
+
+        char buffer[256];
+        int bytes = recv(client_socket, buffer, sizeof(buffer) - 1, 0);
+        if (bytes > 0) {
+            buffer[bytes] = '\0';
+            ProcessSocketData(buffer);
+        }
+        closesocket(client_socket);
+    }
+    return 0;
+}
+
+void ProcessSocketData(char *data) {
+    // Split the message into type (e.g., UPDATE or MSG)
+    char *type = strtok(data, ":");
+    if (type == NULL) return;
+
+    if (strcmp(type, "UPDATE") == 0) {
+        // Extract PID
+        char *pid_str = strtok(NULL, ":");
+        if (pid_str == NULL) return;
+
+        // Find the last colon to separate the clock
+        char *last_colon = strrchr(data, ':');
+        if (last_colon == NULL) return;
+        *last_colon = '\0'; // Temporarily terminate the string to isolate the event
+        last_colon++; // Move to the clock value
+        int clock = atoi(last_colon);
+
+        // The event is everything between the PID and the last colon
+        char *event_start = pid_str + strlen(pid_str) + 1; // Skip PID and the colon after it
+        if (event_start >= last_colon) return; // Invalid format
+
+        int pid = atoi(pid_str);
+        UpdateGUI(pid, event_start, clock);
+    } else if (strcmp(type, "MSG") == 0) {
+        char *sender_str = strtok(NULL, ":");
+        char *receiver_str = strtok(NULL, ":");
+        char *clock_str = strtok(NULL, ":");
+        if (sender_str && receiver_str && clock_str) {
+            int sender = atoi(sender_str);
+            int receiver = atoi(receiver_str);
+            int clock = atoi(clock_str);
+            char msg[256];
+            sprintf(msg, "[P%d] Sent to P%d | Clock: %d", sender, receiver, clock);
+            strcat(global_log, msg);
+            strcat(global_log, "\n");
+            UpdateGUI(sender, msg, clock);
+            InvalidateRect(GetActiveWindow(), NULL, TRUE);
+        }
+    }
+}
+
+void UpdateGUI(int pid, const char *event, int clock) {
+    if (pid < 1 || pid > 4) return;
+
+    scalar_clocks[pid - 1] = clock;
+
+    char clock_text[32];
+    sprintf(clock_text, "Clock: %d", scalar_clocks[pid - 1]);
+    SetWindowText(hwndClocks[pid - 1], clock_text);
+
+    char event_text[256];
+    sprintf(event_text, "%s | Clock: %d", event, scalar_clocks[pid - 1]);
+    strcat(event_logs[pid - 1], event_text);
+    strcat(event_logs[pid - 1], "\n");
+    SendMessage(hwndEventLists[pid - 1], LB_ADDSTRING, 0, (LPARAM)event_text);
+
+    strcat(global_log, event_text);
+    strcat(global_log, "\n");
+    SendMessage(hwndGlobalLog, LB_ADDSTRING, 0, (LPARAM)event_text);
+
+    InvalidateRect(GetActiveWindow(), NULL, TRUE);
+}
+
+void DrawMessages(HDC hdc) {
+    HPEN hPen = CreatePen(PS_SOLID, 2, RGB(0, 0, 255));
+    SelectObject(hdc, hPen);
+    MoveToEx(hdc, 100, 300, NULL); // Example: P1 to P2
+    LineTo(hdc, 200, 300);
+    DeleteObject(hPen);
+}
+
+LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
+    switch (msg) {
+    case WM_CREATE: {
+        for (int i = 0; i < 4; i++) {
+            char label[10];
+            sprintf(label, "P%d", i + 1);
+            CreateWindow("STATIC", label, WS_VISIBLE | WS_CHILD, 10 + i * 200, 10, 190, 20, hwnd, NULL, hInst, NULL);
+            hwndClocks[i] = CreateWindow("STATIC", "Clock: 0", WS_VISIBLE | WS_CHILD, 10 + i * 200, 30, 190, 20, hwnd, NULL, hInst, NULL);
+            hwndEventLists[i] = CreateWindow("LISTBOX", "", WS_VISIBLE | WS_CHILD | LBS_NOSEL, 10 + i * 200, 50, 190, 100, hwnd, NULL, hInst, NULL);
+        }
+
+        CreateWindow("STATIC", "Message Flow", WS_VISIBLE | WS_CHILD, 10, 160, 780, 100, hwnd, NULL, hInst, NULL);
+
+        CreateWindow("BUTTON", "Start All", WS_VISIBLE | WS_CHILD, 10, 270, 100, 30, hwnd, (HMENU)IDC_START, hInst, NULL);
+        CreateWindow("BUTTON", "Stop All", WS_VISIBLE | WS_CHILD, 120, 270, 100, 30, hwnd, (HMENU)IDC_STOP, hInst, NULL);
+        CreateWindow("BUTTON", "Send Message", WS_VISIBLE | WS_CHILD, 230, 270, 100, 30, hwnd, (HMENU)IDC_SEND, hInst, NULL);
+        CreateWindow("BUTTON", "Reset Clocks", WS_VISIBLE | WS_CHILD, 340, 270, 100, 30, hwnd, (HMENU)IDC_RESET, hInst, NULL);
+
+        hwndGlobalLog = CreateWindow("LISTBOX", "", WS_VISIBLE | WS_CHILD | LBS_NOSEL, 10, 310, 780, 280, hwnd, NULL, hInst, NULL);
+        StartServer();
+        break;
+    }
+    case WM_COMMAND:
+        switch (LOWORD(wParam)) {
+        case IDC_START:
+            system("start prog1.exe");
+            system("start prog2.exe");
+            system("start prog3.exe");
+            system("start prog4.exe");
+            break;
+        case IDC_STOP: {
+            SOCKET sock = socket(AF_INET, SOCK_STREAM, 0);
+            if (sock == INVALID_SOCKET) break;
+            SOCKADDR_IN server;
+            server.sin_family = AF_INET;
+            server.sin_addr.s_addr = inet_addr("127.0.0.1");
+            for (int port = 6001; port <= 6004; port++) {
+                server.sin_port = htons(port);
+                if (connect(sock, (SOCKADDR*)&server, sizeof(server)) == 0) {
+                    send(sock, "CONTROL:STOP", 12, 0);
+                }
+                closesocket(sock);
+                sock = socket(AF_INET, SOCK_STREAM, 0);
+            }
+            break;
+        }
+        case IDC_RESET:
+            for (int i = 0; i < 4; i++) {
+                scalar_clocks[i] = 0;
+                char clock_text[32];
+                sprintf(clock_text, "Clock: %d", scalar_clocks[i]);
+                SetWindowText(hwndClocks[i], clock_text);
+                SendMessage(hwndEventLists[i], LB_RESETCONTENT, 0, 0);
+                event_logs[i][0] = '\0';
+            }
+            SendMessage(hwndGlobalLog, LB_RESETCONTENT, 0, 0);
+            global_log[0] = '\0';
+            InvalidateRect(hwnd, NULL, TRUE);
+            break;
+        case IDC_SEND:
+            // Placeholder for send message dialog
+            break;
+        }
+        break;
+    case WM_PAINT: {
+        PAINTSTRUCT ps;
+        HDC hdc = BeginPaint(hwnd, &ps);
+        DrawMessages(hdc);
+        EndPaint(hwnd, &ps);
+        break;
+    }
+    case WM_DESTROY:
+        closesocket(gui_socket);
+        WSACleanup();
+        PostQuitMessage(0);
+        break;
+    default:
+        return DefWindowProc(hwnd, msg, wParam, lParam);
+    }
+    return 0;
+}
+
+int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine, int nCmdShow) {
+    hInst = hInstance;
+    WNDCLASS wc = {0};
+    wc.lpfnWndProc = WndProc;
+    wc.hInstance = hInstance;
+    wc.lpszClassName = "DistributedSystemGUI";
+    RegisterClass(&wc);
+
+    HWND hwnd = CreateWindow("DistributedSystemGUI", "Distributed System Monitor", WS_OVERLAPPEDWINDOW,
+                            CW_USEDEFAULT, CW_USEDEFAULT, WINDOW_WIDTH, WINDOW_HEIGHT, NULL, NULL, hInstance, NULL);
+    ShowWindow(hwnd, nCmdShow);
+    UpdateWindow(hwnd);
+
+    MSG msg;
+    while (GetMessage(&msg, NULL, 0, 0)) {
+        TranslateMessage(&msg);
+        DispatchMessage(&msg);
+    }
+    return msg.wParam;
+}
