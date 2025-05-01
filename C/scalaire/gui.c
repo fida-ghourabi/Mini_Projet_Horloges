@@ -4,8 +4,8 @@
 #include <stdio.h>
 #include <string.h>
 
-#define WINDOW_WIDTH 800
-#define WINDOW_HEIGHT 600
+#define WINDOW_WIDTH 900
+#define WINDOW_HEIGHT 700
 #define IDC_START 101
 #define IDC_STOP 102
 #define IDC_SEND 103
@@ -15,9 +15,18 @@
 HINSTANCE hInst;
 SOCKET gui_socket;
 HWND hwndClocks[4], hwndEventLists[4], hwndGlobalLog;
+HWND hwndLabels[4];
 int scalar_clocks[4] = {0, 0, 0, 0};
 char event_logs[4][1024] = {0};
 char global_log[4096] = {0};
+
+typedef struct {
+    int sender;
+    int receiver;
+    int clock;
+} MessageEvent;
+MessageEvent message_events[100];
+int message_count = 0;
 
 // Forward declarations
 LRESULT CALLBACK WndProc(HWND, UINT, WPARAM, LPARAM);
@@ -79,25 +88,21 @@ DWORD WINAPI HandleConnections(LPVOID param) {
 }
 
 void ProcessSocketData(char *data) {
-    // Split the message into type (e.g., UPDATE or MSG)
     char *type = strtok(data, ":");
     if (type == NULL) return;
 
     if (strcmp(type, "UPDATE") == 0) {
-        // Extract PID
         char *pid_str = strtok(NULL, ":");
         if (pid_str == NULL) return;
 
-        // Find the last colon to separate the clock
         char *last_colon = strrchr(data, ':');
         if (last_colon == NULL) return;
-        *last_colon = '\0'; // Temporarily terminate the string to isolate the event
-        last_colon++; // Move to the clock value
+        *last_colon = '\0';
+        last_colon++;
         int clock = atoi(last_colon);
 
-        // The event is everything between the PID and the last colon
-        char *event_start = pid_str + strlen(pid_str) + 1; // Skip PID and the colon after it
-        if (event_start >= last_colon) return; // Invalid format
+        char *event_start = pid_str + strlen(pid_str) + 1;
+        if (event_start >= last_colon) return;
 
         int pid = atoi(pid_str);
         UpdateGUI(pid, event_start, clock);
@@ -109,10 +114,14 @@ void ProcessSocketData(char *data) {
             int sender = atoi(sender_str);
             int receiver = atoi(receiver_str);
             int clock = atoi(clock_str);
+            if (message_count < 100) {
+                message_events[message_count].sender = sender;
+                message_events[message_count].receiver = receiver;
+                message_events[message_count].clock = clock;
+                message_count++;
+            }
             char msg[256];
             sprintf(msg, "[P%d] Sent to P%d | Clock: %d", sender, receiver, clock);
-            strcat(global_log, msg);
-            strcat(global_log, "\n");
             UpdateGUI(sender, msg, clock);
             InvalidateRect(GetActiveWindow(), NULL, TRUE);
         }
@@ -142,34 +151,123 @@ void UpdateGUI(int pid, const char *event, int clock) {
 }
 
 void DrawMessages(HDC hdc) {
-    HPEN hPen = CreatePen(PS_SOLID, 2, RGB(0, 0, 255));
-    SelectObject(hdc, hPen);
-    MoveToEx(hdc, 100, 300, NULL); // Example: P1 to P2
-    LineTo(hdc, 200, 300);
-    DeleteObject(hPen);
+    int process_positions[4] = {50, 250, 450, 650};
+    int base_y = 220;
+
+    // Draw background for Message Flow section
+    HBRUSH hBrush = CreateSolidBrush(RGB(245, 245, 245));
+    RECT msg_flow_rect = {10, 190, 890, 290};
+    FillRect(hdc, &msg_flow_rect, hBrush);
+    DeleteObject(hBrush);
+
+    HPEN border_pen = CreatePen(PS_SOLID, 1, RGB(200, 200, 200));
+    SelectObject(hdc, border_pen);
+    Rectangle(hdc, 10, 190, 890, 290);
+    DeleteObject(border_pen);
+
+    HPEN timeline_pen = CreatePen(PS_SOLID, 2, RGB(0, 128, 0));
+    SelectObject(hdc, timeline_pen);
+    for (int i = 0; i < 4; i++) {
+        MoveToEx(hdc, process_positions[i], 200, NULL);
+        LineTo(hdc, process_positions[i], 280);
+    }
+    DeleteObject(timeline_pen);
+
+    HPEN arrow_pen = CreatePen(PS_SOLID, 2, RGB(0, 0, 255));
+    SelectObject(hdc, arrow_pen);
+    for (int i = 0; i < message_count; i++) {
+        int sender = message_events[i].sender - 1;
+        int receiver = message_events[i].receiver - 1;
+        int y_pos = base_y + (i * 10) % 60;
+
+        MoveToEx(hdc, process_positions[sender], y_pos, NULL);
+        LineTo(hdc, process_positions[receiver], y_pos);
+
+        if (sender < receiver) {
+            MoveToEx(hdc, process_positions[receiver] - 10, y_pos - 5, NULL);
+            LineTo(hdc, process_positions[receiver], y_pos);
+            MoveToEx(hdc, process_positions[receiver] - 10, y_pos + 5, NULL);
+            LineTo(hdc, process_positions[receiver], y_pos);
+        } else {
+            MoveToEx(hdc, process_positions[receiver] + 10, y_pos - 5, NULL);
+            LineTo(hdc, process_positions[receiver], y_pos);
+            MoveToEx(hdc, process_positions[receiver] + 10, y_pos + 5, NULL);
+            LineTo(hdc, process_positions[receiver], y_pos);
+        }
+    }
+    DeleteObject(arrow_pen);
 }
 
 LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
+    static HBRUSH hBrushBtn = NULL;
+    static HBRUSH hBrushBg = NULL;
+    static COLORREF label_colors[4] = {RGB(255, 99, 71), RGB(60, 179, 113), RGB(106, 90, 205), RGB(255, 215, 0)};
+
     switch (msg) {
     case WM_CREATE: {
+        hBrushBtn = CreateSolidBrush(RGB(70, 130, 180));
+        hBrushBg = CreateSolidBrush(RGB(240, 240, 240));
+
         for (int i = 0; i < 4; i++) {
             char label[10];
             sprintf(label, "P%d", i + 1);
-            CreateWindow("STATIC", label, WS_VISIBLE | WS_CHILD, 10 + i * 200, 10, 190, 20, hwnd, NULL, hInst, NULL);
-            hwndClocks[i] = CreateWindow("STATIC", "Clock: 0", WS_VISIBLE | WS_CHILD, 10 + i * 200, 30, 190, 20, hwnd, NULL, hInst, NULL);
-            hwndEventLists[i] = CreateWindow("LISTBOX", "", WS_VISIBLE | WS_CHILD | LBS_NOSEL, 10 + i * 200, 50, 190, 100, hwnd, NULL, hInst, NULL);
+            hwndLabels[i] = CreateWindow("STATIC", label, WS_VISIBLE | WS_CHILD | SS_CENTER,
+                                         10 + i * 220, 10, 200, 25, hwnd, NULL, hInst, NULL);
+            HFONT hFont = CreateFont(18, 0, 0, 0, FW_BOLD, FALSE, FALSE, FALSE, DEFAULT_CHARSET,
+                                     OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS, DEFAULT_QUALITY,
+                                     DEFAULT_PITCH | FF_SWISS, "Arial");
+            SendMessage(hwndLabels[i], WM_SETFONT, (WPARAM)hFont, TRUE);
+
+            hwndClocks[i] = CreateWindow("STATIC", "Clock: 0", WS_VISIBLE | WS_CHILD | SS_CENTER,
+                                         10 + i * 220, 40, 200, 25, hwnd, NULL, hInst, NULL);
+            SendMessage(hwndClocks[i], WM_SETFONT, (WPARAM)hFont, TRUE);
+
+            hwndEventLists[i] = CreateWindow("LISTBOX", "", WS_VISIBLE | WS_CHILD | WS_BORDER | LBS_NOSEL | WS_VSCROLL,
+                                             10 + i * 220, 70, 200, 120, hwnd, NULL, hInst, NULL);
         }
 
-        CreateWindow("STATIC", "Message Flow", WS_VISIBLE | WS_CHILD, 10, 160, 780, 100, hwnd, NULL, hInst, NULL);
+        HWND hwndMsgFlow = CreateWindow("STATIC", "Message Flow", WS_VISIBLE | WS_CHILD | SS_CENTER,
+                                        10, 200, 860, 25, hwnd, NULL, hInst, NULL);
+        HFONT hFontTitle = CreateFont(16, 0, 0, 0, FW_BOLD, FALSE, FALSE, FALSE, DEFAULT_CHARSET,
+                                      OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS, DEFAULT_QUALITY,
+                                      DEFAULT_PITCH | FF_SWISS, "Arial");
+        SendMessage(hwndMsgFlow, WM_SETFONT, (WPARAM)hFontTitle, TRUE);
 
-        CreateWindow("BUTTON", "Start All", WS_VISIBLE | WS_CHILD, 10, 270, 100, 30, hwnd, (HMENU)IDC_START, hInst, NULL);
-        CreateWindow("BUTTON", "Stop All", WS_VISIBLE | WS_CHILD, 120, 270, 100, 30, hwnd, (HMENU)IDC_STOP, hInst, NULL);
-        CreateWindow("BUTTON", "Send Message", WS_VISIBLE | WS_CHILD, 230, 270, 100, 30, hwnd, (HMENU)IDC_SEND, hInst, NULL);
-        CreateWindow("BUTTON", "Reset Clocks", WS_VISIBLE | WS_CHILD, 340, 270, 100, 30, hwnd, (HMENU)IDC_RESET, hInst, NULL);
+        CreateWindow("BUTTON", "Start All", WS_VISIBLE | WS_CHILD | BS_FLAT,
+                     10, 300, 120, 30, hwnd, (HMENU)IDC_START, hInst, NULL);
+        CreateWindow("BUTTON", "Stop All", WS_VISIBLE | WS_CHILD | BS_FLAT,
+                     140, 300, 120, 30, hwnd, (HMENU)IDC_STOP, hInst, NULL);
+        CreateWindow("BUTTON", "Send Message", WS_VISIBLE | WS_CHILD | BS_FLAT,
+                     270, 300, 120, 30, hwnd, (HMENU)IDC_SEND, hInst, NULL);
+        CreateWindow("BUTTON", "Reset Clocks", WS_VISIBLE | WS_CHILD | BS_FLAT,
+                     400, 300, 120, 30, hwnd, (HMENU)IDC_RESET, hInst, NULL);
 
-        hwndGlobalLog = CreateWindow("LISTBOX", "", WS_VISIBLE | WS_CHILD | LBS_NOSEL, 10, 310, 780, 280, hwnd, NULL, hInst, NULL);
+        hwndGlobalLog = CreateWindow("LISTBOX", "", WS_VISIBLE | WS_CHILD | WS_BORDER | LBS_NOSEL | WS_VSCROLL,
+                                     10, 340, 860, 350, hwnd, NULL, hInst, NULL);
         StartServer();
         break;
+    }
+    case WM_CTLCOLORBTN: {
+        HDC hdc = (HDC)wParam;
+        SetTextColor(hdc, RGB(255, 255, 255));
+        SetBkColor(hdc, RGB(70, 130, 180));
+        return (LRESULT)hBrushBtn;
+    }
+    case WM_CTLCOLORSTATIC: {
+        HDC hdc = (HDC)wParam;
+        HWND hwndStatic = (HWND)lParam;
+
+        for (int i = 0; i < 4; i++) {
+            if (hwndStatic == hwndLabels[i]) {
+                SetTextColor(hdc, label_colors[i]);
+                SetBkColor(hdc, RGB(240, 240, 240));
+                return (LRESULT)hBrushBg;
+            }
+        }
+
+        SetTextColor(hdc, RGB(0, 0, 0));
+        SetBkColor(hdc, RGB(240, 240, 240));
+        return (LRESULT)hBrushBg;
     }
     case WM_COMMAND:
         switch (LOWORD(wParam)) {
@@ -206,16 +304,21 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
             }
             SendMessage(hwndGlobalLog, LB_RESETCONTENT, 0, 0);
             global_log[0] = '\0';
+            message_count = 0;
             InvalidateRect(hwnd, NULL, TRUE);
             break;
         case IDC_SEND:
-            // Placeholder for send message dialog
             break;
         }
         break;
     case WM_PAINT: {
         PAINTSTRUCT ps;
         HDC hdc = BeginPaint(hwnd, &ps);
+        HBRUSH hBgBrush = CreateSolidBrush(RGB(240, 240, 240));
+        RECT rect;
+        GetClientRect(hwnd, &rect);
+        FillRect(hdc, &rect, hBgBrush);
+        DeleteObject(hBgBrush);
         DrawMessages(hdc);
         EndPaint(hwnd, &ps);
         break;
@@ -237,6 +340,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
     wc.lpfnWndProc = WndProc;
     wc.hInstance = hInstance;
     wc.lpszClassName = "DistributedSystemGUI";
+    wc.hbrBackground = CreateSolidBrush(RGB(240, 240, 240));
     RegisterClass(&wc);
 
     HWND hwnd = CreateWindow("DistributedSystemGUI", "Distributed System Monitor", WS_OVERLAPPEDWINDOW,
