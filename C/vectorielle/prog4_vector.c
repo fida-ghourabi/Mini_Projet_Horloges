@@ -26,25 +26,55 @@ typedef struct {
     int vector[NB_PROC];
 } Message;
 
-void print_vector(const int *v) {
-    printf("[");
-    for (int i = 0; i < NB_PROC; i++) {
-        printf("%d", v[i]);
-        if (i < NB_PROC - 1) printf(", ");
+void send_to_gui(const char *message) {
+    SOCKET sock = socket(AF_INET, SOCK_STREAM, 0);
+    if (sock == INVALID_SOCKET) return;
+
+    SOCKADDR_IN gui;
+    gui.sin_family = AF_INET;
+    gui.sin_port = htons(6005); // GUI port
+    gui.sin_addr.s_addr = inet_addr("127.0.0.1");
+
+    if (connect(sock, (SOCKADDR*)&gui, sizeof(gui)) == 0) {
+        send(sock, message, strlen(message), 0);
     }
-    printf("]");
+    closesocket(sock);
+}
+
+void log_to_console_and_gui(const char *format, ...) {
+    va_list args;
+    char buffer[256];
+
+    // Print to console
+    va_start(args, format);
+    vprintf(format, args);
+    va_end(args);
+
+    // Send to GUI
+    va_start(args, format);
+    vsnprintf(buffer, sizeof(buffer), format, args);
+    char gui_message[256];
+    snprintf(gui_message, sizeof(gui_message), "LOG:%d:%s", MON_ID, buffer);
+    send_to_gui(gui_message);
+    va_end(args);
+}
+
+void print_vector(const int *v) {
+    char vector_str[32];
+    snprintf(vector_str, sizeof(vector_str), "[%d, %d, %d, %d]", v[0], v[1], v[2], v[3]);
+    log_to_console_and_gui("%s", vector_str);
 }
 
 void display_clock(const char *event) {
-    printf("[P%d] %s | Horloge vectorielle : ", MON_ID, event);
+    log_to_console_and_gui("[P%d] %s | Horloge vectorielle : ", MON_ID, event);
     print_vector(vector_clock);
-    printf("\n");
+    log_to_console_and_gui("\n");
 }
 
 void update_on_receive(Message msg) {
-    printf("[P%d] Recu de P%d | Vecteur recu : ", MON_ID, msg.sender_id);
+    log_to_console_and_gui("[P%d] Recu de P%d | Vecteur recu : ", MON_ID, msg.sender_id);
     print_vector(msg.vector);
-    printf("\n");
+    log_to_console_and_gui("\n");
 
     for (int i = 0; i < NB_PROC; i++) {
         if (vector_clock[i] < msg.vector[i]) {
@@ -53,15 +83,15 @@ void update_on_receive(Message msg) {
     }
     vector_clock[MON_ID - 1]++;
 
-    printf("[P%d] Nouvelle horloge : ", MON_ID);
+    log_to_console_and_gui("[P%d] Nouvelle horloge : ", MON_ID);
     print_vector(vector_clock);
-    printf("\n");
+    log_to_console_and_gui("\n");
 }
 
 void send_message(int port, int dest_id) {
     SOCKET sock = socket(AF_INET, SOCK_STREAM, 0);
     if (sock == INVALID_SOCKET) {
-        printf("Erreur socket : %d\n", WSAGetLastError());
+        log_to_console_and_gui("Erreur socket : %d\n", WSAGetLastError());
         return;
     }
 
@@ -77,13 +107,12 @@ void send_message(int port, int dest_id) {
     }
 
     if (try_count == 5) {
-        printf("[P%d] Connexion echouee au port %d (code %d)\n", MON_ID, port, WSAGetLastError());
+        log_to_console_and_gui("[P%d] Connexion echouee au port %d (code %d)\n", MON_ID, port, WSAGetLastError());
         closesocket(sock);
         return;
     }
 
     vector_clock[MON_ID - 1]++;
-
 
     Message msg;
     msg.sender_id = MON_ID;
@@ -91,13 +120,12 @@ void send_message(int port, int dest_id) {
         msg.vector[i] = vector_clock[i];
     }
 
-    printf("[P%d] Envoi a P%d | Horloge envoyee : ", MON_ID, dest_id);
+    log_to_console_and_gui("[P%d] Envoi a P%d | Horloge envoyee : ", MON_ID, dest_id);
     print_vector(msg.vector);
-    printf("\n");
+    log_to_console_and_gui("\n");
 
     send(sock, (char*)&msg, sizeof(msg), 0);
     closesocket(sock);
-   
 }
 
 DWORD WINAPI receive_thread(LPVOID lpParam) {
@@ -107,7 +135,7 @@ DWORD WINAPI receive_thread(LPVOID lpParam) {
 
     server_socket = socket(AF_INET, SOCK_STREAM, 0);
     if (server_socket == INVALID_SOCKET) {
-        printf("Erreur creation socket serveur : %d\n", WSAGetLastError());
+        log_to_console_and_gui("Erreur creation socket serveur : %d\n", WSAGetLastError());
         return 1;
     }
 
@@ -116,16 +144,16 @@ DWORD WINAPI receive_thread(LPVOID lpParam) {
     server_addr.sin_addr.s_addr = inet_addr(IP);
 
     if (bind(server_socket, (SOCKADDR*)&server_addr, sizeof(server_addr)) == SOCKET_ERROR) {
-        printf("Erreur bind : %d\n", WSAGetLastError());
+        log_to_console_and_gui("Erreur bind : %d\n", WSAGetLastError());
         return 1;
     }
 
     if (listen(server_socket, 4) == SOCKET_ERROR) {
-        printf("Erreur listen : %d\n", WSAGetLastError());
+        log_to_console_and_gui("Erreur listen : %d\n", WSAGetLastError());
         return 1;
     }
 
-    printf("[P%d] Serveur pret sur le port %d\n", MON_ID, PORT4);
+    log_to_console_and_gui("[P%d] Serveur pret sur le port %d\n", MON_ID, PORT4);
 
     while (!stop) {
         SOCKET client_socket = accept(server_socket, (SOCKADDR*)&client_addr, &addr_len);
@@ -158,7 +186,7 @@ int main() {
 
     vector_clock[MON_ID - 1]++;
     time_t t = time(NULL);
-    printf("[P%d] Heure systeme : %s", MON_ID, ctime(&t));
+    log_to_console_and_gui("[P%d] Heure systeme : %s", MON_ID, ctime(&t));
     display_clock("Evenement local 3 : Heure systeme");
 
     vector_clock[MON_ID - 1]++;
@@ -180,7 +208,7 @@ int main() {
     Sleep(200);
     WSACleanup();
 
-    printf("Appuyez sur Entree pour quitter...\n");
+    log_to_console_and_gui("Appuyez sur Entree pour quitter...\n");
     getchar();
     return 0;
 }

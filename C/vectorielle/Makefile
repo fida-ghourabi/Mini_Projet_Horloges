@@ -1,9 +1,9 @@
 # Makefile
 CC = gcc
 CFLAGS = -Wall
-LIBS = -lws2_32
+LIBS = -lws2_32 -lgdi32
 
-PROGS = prog1_vector prog2_vector prog3_vector prog4_vector
+PROGS = prog1_vector prog2_vector prog3_vector prog4_vector gui
 
 all: $(PROGS)
 
@@ -18,6 +18,9 @@ prog3_vector: prog3_vector.c
 
 prog4_vector: prog4_vector.c
 	$(CC) $(CFLAGS) -o prog4_vector prog4_vector.c $(LIBS)
+
+gui: gui.c
+	$(CC) $(CFLAGS) -o gui gui.c $(LIBS)
 
 clean:
 	del *.exe
