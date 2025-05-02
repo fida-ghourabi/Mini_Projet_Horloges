@@ -6,7 +6,6 @@
 #include <windows.h>
 #include <time.h>
 
-#pragma comment(lib, "ws2_32.lib")
 
 #define PORT3 6003
 #define PORT1 6001
@@ -191,10 +190,12 @@ int main() {
 
     vector_clock[MON_ID - 1]++;
     int y = x * x;
+    printf("[P%d] Valeur de y : %d\n", MON_ID, y); // Use y to avoid warning
     display_clock("Evenement local 4 : Carre");
 
-    vector_clock[MON_ID - 1]++;
+    
     Sleep(1000);
+    vector_clock[MON_ID - 1]++;
     display_clock("Evenement local 5 : Pause 1s");
 
     send_message(PORT1, 1); Sleep(200);

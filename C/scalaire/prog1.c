@@ -64,6 +64,7 @@ void send_message(int port, int dest_id) {
         closesocket(sock);
         return;
     }
+    scalar_clock++;  // Mise à jour locale avant l’envoi
 
     // Préparer et afficher le message AVANT envoi
     Message msg;
@@ -73,8 +74,6 @@ void send_message(int port, int dest_id) {
     printf("[P%d] Envoi a P%d | Horloge scalaire envoyee : %d\n", MON_ID, dest_id, scalar_clock);
 
     send(sock, (char*)&msg, sizeof(msg), 0);
-    scalar_clock++;  // Mise à jour locale après l’envoi
-    printf("[P%d] Nouvelle horloge scalaire : %d\n", MON_ID, scalar_clock);
     char update[256]; // Declare update locally
     sprintf(update, "MSG:%d:%d:%d", MON_ID, dest_id, scalar_clock);
     send_to_gui(update);
@@ -175,8 +174,9 @@ int main() {
     printf("[P%d] Valeur de y : %d\n", MON_ID, y); // Use y to avoid warning
     display_clock("Evenement local 4 : Addition");
 
-    scalar_clock++;
+    
     Sleep(1000);
+    scalar_clock++;
     display_clock("Evenement local 5 : Pause 1s");
 
     // Envois

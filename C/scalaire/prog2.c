@@ -64,15 +64,15 @@ void send_message(int port, int dest_id) {
         closesocket(sock);
         return;
     }
-
+    scalar_clock++;
     Message msg;
     msg.sender_id = MON_ID;
     msg.scalar_clock = scalar_clock;
 
     printf("[P%d] Envoi a P%d | Horloge scalaire envoyee : %d\n", MON_ID, dest_id, scalar_clock);
     send(sock, (char*)&msg, sizeof(msg), 0);
-    scalar_clock++;
-    printf("[P%d] Nouvelle horloge scalaire : %d\n", MON_ID, scalar_clock);
+   
+    
     char update[256];
     sprintf(update, "MSG:%d:%d:%d", MON_ID, dest_id, scalar_clock);
     send_to_gui(update);
@@ -173,8 +173,9 @@ int main() {
     printf("[P%d] Valeur de y : %d\n", MON_ID, y); // Use y to avoid warning
     display_clock("Evenement local 4 : Multiplication");
 
-    scalar_clock++;
+    
     Sleep(1000);
+    scalar_clock++;
     display_clock("Evenement local 5 : Pause 1s");
 
     send_message(PORT1, 1); Sleep(200);

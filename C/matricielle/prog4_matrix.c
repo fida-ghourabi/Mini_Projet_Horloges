@@ -6,7 +6,6 @@
 #include <windows.h>
 #include <time.h>
 
-#pragma comment(lib, "ws2_32.lib")
 
 #define PORT4 6004
 #define PORT1 6001
